@@ -1,8 +1,10 @@
 package client
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -33,6 +35,7 @@ type ComfyClientCallbacks struct {
 
 // ComfyClient is the top level object that allows for interaction with the ComfyUI backend
 type ComfyClient struct {
+	ctx                   context.Context
 	serverBaseAddress     string
 	serverAddress         string
 	serverPort            int
@@ -49,16 +52,22 @@ type ComfyClient struct {
 }
 
 // NewComfyClientWithTimeout creates a new instance of a Comfy2go client with a connection timeout
-func NewComfyClientWithTimeout(server_address string, server_port int, callbacks *ComfyClientCallbacks, timeout int, retry int) *ComfyClient {
-	sbaseaddr := server_address + ":" + strconv.Itoa(server_port)
+func NewComfyClientWithTimeout(ctx context.Context, server_address string, server_port int, callbacks *ComfyClientCallbacks, timeout int, retry int) *ComfyClient {
+	sbaseaddr := server_address
+	//如果端口不为0，则使用端口
+	if server_port != 0 {
+		sbaseaddr = server_address + ":" + strconv.Itoa(server_port)
+	}
 	cid := uuid.New().String()
 	retv := &ComfyClient{
+		ctx:               ctx,
 		serverBaseAddress: sbaseaddr,
 		serverAddress:     server_address,
 		serverPort:        server_port,
 		clientid:          cid,
 		queueditems:       make(map[string]*QueueItem),
 		webSocket: &WebSocketConnection{
+			ctx:            ctx,
 			WebSocketURL:   "ws://" + sbaseaddr + "/ws?clientId=" + cid,
 			ConnectionDone: make(chan bool),
 			MaxRetry:       retry, // Maximum number of retries
@@ -79,16 +88,22 @@ func NewComfyClientWithTimeout(server_address string, server_port int, callbacks
 }
 
 // NewComfyClient creates a new instance of a Comfy2go client
-func NewComfyClient(server_address string, server_port int, callbacks *ComfyClientCallbacks) *ComfyClient {
-	sbaseaddr := server_address + ":" + strconv.Itoa(server_port)
+func NewComfyClient(ctx context.Context, server_address string, server_port int, callbacks *ComfyClientCallbacks) *ComfyClient {
+	sbaseaddr := server_address
+	//如果端口不为0，则使用端口
+	if server_port != 0 {
+		sbaseaddr = server_address + ":" + strconv.Itoa(server_port)
+	}
 	cid := uuid.New().String()
 	retv := &ComfyClient{
+		ctx:               ctx,
 		serverBaseAddress: sbaseaddr,
 		serverAddress:     server_address,
 		serverPort:        server_port,
 		clientid:          cid,
 		queueditems:       make(map[string]*QueueItem),
 		webSocket: &WebSocketConnection{
+			ctx:            ctx,
 			WebSocketURL:   "ws://" + sbaseaddr + "/ws?clientId=" + cid,
 			ConnectionDone: make(chan bool),
 			MaxRetry:       5, // Maximum number of retries
@@ -106,6 +121,28 @@ func NewComfyClient(server_address string, server_port int, callbacks *ComfyClie
 	// golang uses mark-sweep GC, so this circular reference should be fine
 	retv.webSocket.Callback = retv
 	return retv
+}
+
+// EnableHTTPS 设置https协议
+func (c *ComfyClient) EnableHTTPS() {
+	if c.webSocket != nil && strings.HasPrefix(c.webSocket.WebSocketURL, "ws://") {
+		c.webSocket.WebSocketURL = "wss://" + strings.TrimPrefix(c.webSocket.WebSocketURL, "ws://")
+	}
+}
+
+// DisableHTTPS 禁用https协议
+func (c *ComfyClient) DisableHTTPS() {
+	if c.webSocket != nil && strings.HasPrefix(c.webSocket.WebSocketURL, "wss://") {
+		c.webSocket.WebSocketURL = "ws://" + strings.TrimPrefix(c.webSocket.WebSocketURL, "wss://")
+	}
+}
+
+// GetBaseURL 获取基础host
+func (c *ComfyClient) GetBaseURL() string {
+	if c.webSocket != nil && strings.HasPrefix(c.webSocket.WebSocketURL, "wss://") {
+		return "https://" + c.serverBaseAddress
+	}
+	return "http://" + c.serverBaseAddress
 }
 
 func (cc *ComfyClient) SetDialer(dialer *websocket.Dialer) {
@@ -263,7 +300,7 @@ func (c *ComfyClient) OnWindowSocketMessage(msg string) {
 	message := &WSStatusMessage{}
 	err := json.Unmarshal([]byte(msg), &message)
 	if err != nil {
-		slog.Error("Deserializing Status Message:", err)
+		slog.Error("Deserializing Status Message", "error", err)
 	}
 
 	switch message.Type {
@@ -369,7 +406,10 @@ func (c *ComfyClient) OnWindowSocketMessage(msg string) {
 	case "execution_interrupted":
 		s := message.Data.(*WSMessageExecutionInterrupted)
 		qi := c.GetQueuedItem(s.PromptID)
+		fmt.Println("检查到任务被停止")
+		fmt.Println("execution_interrupted", "qi", qi)
 		if qi != nil {
+			fmt.Println("检测到队列中包含停止任务停止任务")
 			m := PromptMessage{
 				Type: "stopped",
 				Message: &PromptMessageStopped{

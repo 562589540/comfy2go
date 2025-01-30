@@ -3,9 +3,13 @@ package graphapi
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
+	"log"
 	"log/slog"
 	"os"
+	"path/filepath"
+	"time"
 
 	"sort"
 	"strconv"
@@ -474,12 +478,42 @@ func (t *Graph) SaveGraphToFile(path string) error {
 	return nil
 }
 
+func debugJson(debugData interface{}) error {
+	// 获取当前时间戳作为文件名的一部分
+	timestamp := time.Now().Format("20060102_150405")
+
+	// 创建调试目录
+	debugDir := "debug/workflows"
+	if err := os.MkdirAll(debugDir, 0755); err != nil {
+		return fmt.Errorf("创建调试目录失败: %v", err)
+	}
+
+	// 构建文件路径
+	filePath := filepath.Join(debugDir, fmt.Sprintf("debug_%s.json", timestamp))
+
+	// 将工作流转换为 JSON
+	workflowJson, err := json.MarshalIndent(debugData, "", "  ")
+	if err != nil {
+		return fmt.Errorf("工作流序列化失败: %v", err)
+	}
+
+	// 写入文件
+	if err := os.WriteFile(filePath, workflowJson, 0644); err != nil {
+		return fmt.Errorf("保存工作流文件失败: %v", err)
+	}
+
+	log.Printf("已保存修改后的工作流到: %s", filePath)
+	return nil
+}
+
 func (t *Graph) GraphToPrompt(clientID string) (Prompt, error) {
 	p := Prompt{
 		ClientID: clientID,
 		Nodes:    make(map[int]PromptNode),
 		// PID:      "floopy-thingy-ma-bob", // we can add additionl information that is ignored by ComfyUI
 	}
+	//debugJson(t.NodesInExecutionOrder)
+	//time.Sleep(1 * time.Second)
 	for _, node := range t.NodesInExecutionOrder {
 		if node.IsVirtual() {
 			// Don't serialize frontend only nodes but let them make changes
@@ -531,5 +565,6 @@ func (t *Graph) GraphToPrompt(clientID string) (Prompt, error) {
 	}
 	// assign our current graph as the workflow
 	p.ExtraData.PngInfo.Workflow = t
+	//debugJson(p)
 	return p, nil
 }

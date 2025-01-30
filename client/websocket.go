@@ -1,6 +1,7 @@
 package client
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"math"
@@ -16,6 +17,7 @@ type WebSocketCallback interface {
 }
 
 type WebSocketConnection struct {
+	ctx            context.Context
 	WebSocketURL   string
 	Conn           *websocket.Conn
 	ConnectionDone chan bool
@@ -46,6 +48,9 @@ func (w *WebSocketConnection) ConnectWithManager(timeoutSeconds int) error {
 		retries := 0
 		for {
 			select {
+			case <-w.ctx.Done():
+				slog.Info("WebSocket connection closed by context")
+				return
 			case <-attemptConnect:
 				err := w.connect()
 				if err != nil {
@@ -124,13 +129,20 @@ func (w *WebSocketConnection) handleMessages() {
 		w.ConnectionDone <- true
 	}()
 	for {
-		_, message, err := w.Conn.ReadMessage()
-		if err != nil {
-			slog.Warn(fmt.Sprintf("Read error: %v", err))
-			break
-		}
-		if w.Callback != nil {
-			w.Callback.OnMessage(string(message))
+		select {
+		case <-w.ctx.Done():
+			slog.Info("WebSocket connection closed by context")
+			return
+		default:
+			_, message, err := w.Conn.ReadMessage()
+			if err != nil {
+				slog.Warn(fmt.Sprintf("Read error: %v", err))
+				return
+			}
+			//fmt.Println("收到WS消息", "msg", string(message))
+			if w.Callback != nil {
+				w.Callback.OnMessage(string(message))
+			}
 		}
 	}
 }

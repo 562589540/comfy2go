@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"log"
@@ -114,7 +115,9 @@ func main() {
 	clientaddr, clientport := procCLI()
 
 	// create a client
-	c := client.NewComfyClient(clientaddr, clientport, nil)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	c := client.NewComfyClient(ctx, clientaddr, clientport, nil)
 
 	// Becuase we are not going to be creating or queuing prompts, we do not
 	// need to initialize the client.

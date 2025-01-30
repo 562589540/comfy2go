@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"log"
@@ -43,7 +44,9 @@ func main() {
 	}
 
 	// create a client
-	c := client.NewComfyClient(clientaddr, clientport, callbacks)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	c := client.NewComfyClient(ctx, clientaddr, clientport, callbacks)
 
 	// the client needs to be in an initialized state before usage
 	if !c.IsInitialized() {
