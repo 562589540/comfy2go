@@ -326,7 +326,15 @@ func newIntProperty(input_name string, optional bool, data interface{}, index in
 
 		// max?
 		if val, ok := d["max"]; ok {
-			c.Max = int64(val.(float64))
+			floatVal := val.(float64)
+			// 检查是否超出 int64 范围
+			if floatVal > float64(math.MaxInt64) {
+				c.Max = math.MaxInt64
+			} else if floatVal < float64(math.MinInt64) {
+				c.Max = math.MinInt64
+			} else {
+				c.Max = int64(floatVal)
+			}
 			c.hasRange = true
 		}
 
