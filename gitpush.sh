@@ -10,7 +10,7 @@ git add .
 git commit -m "$commit_message"
 
 # 推送到远程仓库
-git push origin new_fast_ai
+git push origin main
 
 # 清理 ssh-agent
 ssh-agent -k > /dev/null
